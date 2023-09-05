@@ -56,8 +56,6 @@ class CSSTokenizerFilter {
 		Logger.registerClass(CSSTokenizerFilter.class);
 	}
 
-	private static final List<String> CSS_COMBINATORS = Arrays.asList(">", "+", "~");
-
 	CSSTokenizerFilter(){
 		passedCharset = "UTF-8";
 		stopAtDetectedCharset = false;
@@ -1777,12 +1775,9 @@ class CSSTokenizerFilter {
 		}
 		if(isIDSelector && "".equals(id)) return null; // No ID
 
-		if (CSS_COMBINATORS.contains(elementString)) {
-			return elementString;
-		}
-
 		boolean elementValid =
-		    "*".equals(HTMLelement) ||
+		    "*".equals(HTMLelement) || 
+		    "~".equals(HTMLelement) ||
 		    (ElementInfo.isValidHTMLTag(HTMLelement.toLowerCase())) ||
 		    ("".equals(HTMLelement.trim()) &&
                     ((!className.equals("")) || (!id.equals("")) || attSelections!=null ||
