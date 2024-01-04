@@ -1,0 +1,86 @@
+From a9a127a48df8d74d6559b3593875742576c935a8 Mon Sep 17 00:00:00 2001
+From: glenn <glenn@Oqb95agYHNenFlHLfHed92ZLbRRs0O4xHihnsmnIDQs>
+Date: Sat, 16 Dec 2023 13:55:08 +0000
+Subject: [PATCH] log outgoing CHK requests
+
+Output is stored in the files requests.X.log (will be rotated after 100MB).
+Format is CSV with the following fields:
+
+* timestamp
+* routing key
+* routing key location
+* HTL
+* peer address
+* peer location
+* peer degree ("+ N friends")
+* total number of of peers
+* number of connected peers
+* number of backed off peers
+---
+ src/freenet/node/PeerNode.java | 32 ++++++++++++++++++++++++++++++++
+ 1 file changed, 32 insertions(+)
+
+diff --git a/src/freenet/node/PeerNode.java b/src/freenet/node/PeerNode.java
+index b6b828c58..fce4b5b06 100644
+--- a/src/freenet/node/PeerNode.java
++++ b/src/freenet/node/PeerNode.java
+@@ -50,6 +50,7 @@ import freenet.io.comm.DisconnectedException;
+ import freenet.io.comm.FreenetInetAddress;
+ import freenet.io.comm.Message;
+ import freenet.io.comm.MessageFilter;
++import freenet.io.comm.MessageType;
+ import freenet.io.comm.NotConnectedException;
+ import freenet.io.comm.Peer;
+ import freenet.io.comm.Peer.LocalAddressException;
+@@ -398,6 +399,8 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
+ 	private static volatile boolean logMINOR;
+ 	private static volatile boolean logDEBUG;
+ 
++	private static final java.util.logging.Logger REQUESTLOG = java.util.logging.Logger.getLogger(PeerNode.class.getName());
++
+ 	static {
+ 		Logger.registerLogThresholdCallback(new LogThresholdCallback(){
+ 			@Override
+@@ -406,6 +409,16 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
+ 				logDEBUG = Logger.shouldLog(LogLevel.DEBUG, this);
+ 			}
+ 		});
++
++		REQUESTLOG.setLevel(java.util.logging.Level.FINEST);
++		System.setProperty("java.util.logging.SimpleFormatter.format", "%1$tFT%1$tT.%1$tL,%5$s%6$s%n");
++		try {
++			java.util.logging.FileHandler fh = new java.util.logging.FileHandler("requests.%g.log", 104857600, 99, true);
++			fh.setFormatter(new java.util.logging.SimpleFormatter());
++			REQUESTLOG.addHandler(fh);
++		} catch (IOException e) {
++			System.err.println("failed to setup request logger: " + e);
++		}
+ 	}
+ 
+ 	private PacketFormat packetFormat;
+@@ -1089,6 +1102,25 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
+ 		long now = System.currentTimeMillis();
+ 		reportBackoffStatus(now);
+ 		int maxSize = getMaxPacketSize();
++
++		if (msg.getSpec() == DMT.FNPCHKDataRequest) {
++			short htl = msg.getShort(DMT.HTL);
++			Key key = (Key)msg.getObject(DMT.FREENET_ROUTING_KEY);
++			PeerNodeStatus[] allPeerNodeStatuses = peers.getPeerNodeStatuses(true);
++
++			REQUESTLOG.log(java.util.logging.Level.FINE, "{0},{1,number,#.###############},{2},{3},{4,number,#.###############},{5},{6},{7},{8}", new Object[]{
++					Base64.encode(key.getKeyBytes()),
++					key.toNormalizedDouble(),
++					htl,
++					getPeer().toStringPrefNumeric(),
++					getLocation(),
++					getDegree(),
++					allPeerNodeStatuses.length,
++					PeerNodeStatus.getPeerStatusCount(allPeerNodeStatuses, PeerManager.PEER_NODE_STATUS_CONNECTED),
++					PeerNodeStatus.getPeerStatusCount(allPeerNodeStatuses, PeerManager.PEER_NODE_STATUS_ROUTING_BACKED_OFF)
++			});
++		}
++
+ 		int x = messageQueue.queueAndEstimateSize(item, maxSize);
+ 		if(x > maxSize || !node.enablePacketCoalescing) {
+ 			// If there is a packet's worth to send, wake up the packetsender.
